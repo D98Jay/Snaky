@@ -1,0 +1,384 @@
+#include <iostream>
+#include <conio.h>
+#include <Windows.h>
+using namespace std;
+
+// Map dimensions
+const short mapwidth = 34;
+const short mapheight = mapwidth/2;
+const short mapsize = mapwidth * mapheight;
+short map[mapsize];
+
+// Snake details
+short headX, headY;
+short direction;
+short food; // 3 at start
+short speed; // 0 at start
+bool speedup;
+short snakeStyle;
+bool randomStyle = false; // defalt is non-choose
+
+// Game details
+bool running;
+char keypress;
+short level; // Start with 1
+short bestScore = 0; // Start with 0
+short currentScore; // Start with 0
+
+// Game function
+void welcomeScr();
+void gameOverScr();
+void mainGameFunction();
+void initMap();
+void printMap();
+void updateMap();
+void placeCursor(short coordX, short coordY);
+char getMapValue(short value);
+void move(short dx, short dy);
+void changeDirection(char key);
+void update();
+void hitPortalEffect();
+void generateFood();
+
+// The "Snaky" game
+void main() {
+	welcomeScr();
+	// Check if player choose snakeStyle = Random
+	if (snakeStyle == 3) randomStyle = true;
+
+	do {
+		// Check if snakeStyle is random -> choose snakeStyle the first time
+		if (randomStyle) snakeStyle = 1;
+
+		// When [running = true]
+		mainGameFunction();
+		// When [running = flase]
+		gameOverScr();
+
+		// Show best score, Replay or Exit option
+		cout << "Your best score: " << bestScore << endl;
+		cout << "Punch [R] if you want to replay," << endl;
+		cout << "or [Anything Else] to exit!";
+		keypress = getch();
+	} while (keypress == 'r');
+}
+
+// Main function of the game
+void mainGameFunction() {
+	// Set default value
+	currentScore = 0;
+	running = true;
+	level = 1;
+	direction = 0;
+
+	// Initialize the map
+	initMap();
+	system("cls");
+	printMap();
+
+	while (running) {
+		// If a key is pressed
+		if (kbhit()) {
+			changeDirection(getch()); // Change to direction determined by key pressed
+		}
+		update(); // Upate the map value (also check for if running = false)
+		updateMap(); // Update the screen
+		if (speed < 241 && !speedup) _sleep(300 - speed); // wait 0.3 second (snake speed)
+		else _sleep(60); // max speed = 0.06 second
+		speedup = false;
+	}
+	// Calculate the best score
+	if (currentScore > bestScore) bestScore = currentScore;
+}
+
+// Initialize map
+void initMap() {
+	// Reset map values
+	food = 3;
+	speed = 0;
+	for (short i = 0; i < mapsize; i++) {
+		map[i] = 0;
+	}
+	// Place initial snake head location in middle of map
+	headX = mapwidth / 2;
+	headY = mapheight / 2;
+	map[headX + headY * mapwidth] = 1;
+
+	// Place top and bottom walls 
+	for (short x = 0; x < mapwidth; ++x) {
+		map[x] = -1;
+		map[x + (mapheight - 1) * mapwidth] = -1;
+	}
+	// Place left and right walls
+	for (short y = 0; y < mapheight; y++) {
+		map[0 + y * mapwidth] = -1;
+		map[(mapwidth - 1) + y * mapwidth] = -1;
+	}
+	// Generate first food
+	generateFood();
+}
+
+// Change snake direction from input
+void changeDirection(char key) {
+/*
+  W			  0
+A + D		3 + 1
+  S			  2
+*/
+	switch (key) {
+		case 'w': if (direction == 0) speedup = true;
+				  else if (direction != 2) direction = 0; break;
+		case 'd': if (direction == 1) speedup = true;
+				  else if (direction != 3) direction = 1; break;
+		case 's': if (direction == 2) speedup = true;
+				  else if (direction != 0) direction = 2; break;
+		case 'a': if (direction == 3) speedup = true;
+				  else if (direction != 1) direction = 3; break;
+
+		// Pause the game if [P] is pressed
+		case 'p': {
+			cout << "Punch [P] again to unpause";
+			do {
+				keypress = getch();
+			} while (keypress != 'p');
+			system("cls");
+			printMap();
+		} break;
+	} // Make sure snake doesn't go backward
+}
+
+// Update the map
+void update() {
+	// Make snake tail--
+	for (short y = 0; y < mapheight; y++) {
+		for (short x = 0; x < mapwidth; x++) {
+			// Determine where is the snake tail
+			if (map[x + y * mapwidth] == 1) {
+				placeCursor(x, y + 1);
+				cout << " ";
+			}
+		}
+	}
+	// Check if the value is snake body -> value--
+	for (short i = 0; i < mapsize; i++) {
+		if (map[i] > 0) map[i]--;
+	}
+	// Move in direction indicated
+	switch (direction) {
+	case 0: move(0, -1); break; // UP
+	case 1: move(1, 0);  break; // RIGHT
+	case 2: move(0, 1);  break; // DOWN
+	case 3: move(-1, 0); break; // LEFT
+	}
+}
+
+// Move snake head to new location
+void move(short dx, short dy) {
+	// determine new head position
+	short newx = headX + dx;
+	short newy = headY + dy;
+
+	// Check if there is portal at location
+	if (map[newx + newy * mapwidth] == -3) {
+		hitPortalEffect(); // Play "hit portal" effect
+		level++; // Increase the level
+		currentScore++; // Increase the score
+	}
+	else {
+		// Check if there is food at location
+		if (map[newx + newy * mapwidth] == -2) {
+			food++; // Increase food value (body length)
+			speed += 15; // Increase speed by 0.015 second
+			currentScore++; // Increase the score
+			generateFood(); // Generate new food (or portal) on map
+		}
+		// Check if the location is non-free (hits walls or snake body)
+		else if (map[newx + newy * mapwidth] != 0) running = false;
+
+		// Move head to new location
+		headX = newx;
+		headY = newy;
+		map[headX + headY * mapwidth] = food;
+	}
+}
+
+// When the snake "eat" the portal (level up)
+void hitPortalEffect() {
+	// Snake go to the portal
+	for (short time = food; time > 0; time--) {
+		// Make snake tail--
+		for (short y = 0; y < mapheight; y++) {
+			for (short x = 0; x < mapwidth; x++) {
+				// Determine where is the snake tail
+				if (map[x + y * mapwidth] == 1) {
+					placeCursor(x, y + 1);
+					cout << " ";
+				}
+			}
+		}
+		// Check if the value is snake body -> value--
+		for (short i = 0; i < mapsize; i++) {
+			if (map[i] > 0) map[i]--;
+		}
+		updateMap();
+		_sleep(60);
+	}
+	// Check if snakeStyle is random -> snakeStyle change every time level up
+	if (randomStyle) snakeStyle = level % 2 + 1;
+
+	// Initialize the map
+	initMap();
+	system("cls");
+	printMap();
+}
+
+// Generate new food (or portal) on map
+void generateFood() {
+	// Generate random free location within the map
+	short x, y;
+	do {
+		x = rand() % (mapwidth - 2) + 1;
+		y = rand() % (mapheight - 2) + 1;
+	} while (map[x + y * mapwidth] != 0);
+
+	// Check if player scores 5 times the level
+	if (food != level * 5 + 2)
+		// Place new food (food value = -2)
+		map[x + y * mapwidth] = -2;
+	else
+		// Place a portal (portal value = -3)
+		map[x + y * mapwidth] = -3;
+}
+
+// Print the map to console
+void printMap() {
+	printf("Your Score:%3d           Level:%3d\n", currentScore, level);
+	for (short y = 0; y < mapheight; ++y) {
+		for (short x = 0; x < mapwidth; ++x) {
+			// Print the value at current x,y location
+			cout << getMapValue(map[x + y * mapwidth]);
+		}
+		// End the line for next x value
+		cout << endl;
+	}
+}
+
+// Update the map [except for walls and spaces]
+void updateMap() {
+	short foodX, foodY;	
+	placeCursor(0, 0);
+	printf("Your Score:%3d           Level:%3d\n", currentScore, level);
+	for (short y = 0; y < mapheight; ++y) {
+		for (short x = 0; x < mapwidth; ++x) {
+			// Print the value at current x,y location
+			if (map[x + y * mapwidth] != -1 && map[x + y * mapwidth] != 0) {
+				placeCursor(x, y + 1);
+				cout << getMapValue(map[x + y * mapwidth]);
+			}
+		}
+	}
+	// Move the cursor to bottom location
+	placeCursor(0, mapheight + 1);
+}
+
+// Move the cursor to coordinate X,Y
+void placeCursor(short coordX, short coordY) {
+	COORD coord;
+	coord.X = coordX;
+	coord.Y = coordY;
+	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+}
+
+// Return graphical character for display from map value
+char getMapValue(short value) {
+	// Return the snake
+	if (running && value > 0) {
+		// Style 1 [O0O0O0O]
+		if (snakeStyle == 1) {
+			// Return snake head
+			if (value == food) return (char)153;
+			// Return snake body
+			else if (value % 2 == food % 2)return 'O';
+			else return (char)233;
+		}
+		// Style 2 [1616008]
+		else {
+			switch ((food - value) % 7) {
+				case 0: return '1'; break;
+				case 1: return '6'; break;
+				case 2: return '1'; break;
+				case 3: return '6'; break;
+				case 4: return '0'; break;
+				case 5: return '0'; break;
+				case 6: return '8'; break;
+			}
+		}
+	}
+	switch (value) {
+		// Return wall
+		case -1: return (char)177; break;
+		// Return food
+		case -2: return '$'; break;
+		// Return portal
+		case -3: return (char)219; break;
+	}
+}
+
+// Welcome Screen
+void welcomeScr() {
+	// Logo
+	char welcomeStr[] = "WELCOME TO...\n__________________________________\n   /-__--/__  __ ____   /-/_ __ __\n   \\-\\ \\//--\\/-//-__-\\ /-/_//-//-/\n /\\_\\-\\ /-/\\--//-/_/-//---//-//-/\n/_____//_/ /_/ \\___\\_\\\\/\\_\\\\_--/\n_________________________/____/___\n\n";
+	for (short i = 0; i < 222; i++) {
+		cout << welcomeStr[i];
+		_sleep(20);
+	}
+	// Manual
+	cout << "       [W]" << endl;
+	cout << "Use [A][S][D] to control the Snake\n" << endl;
+	cout << "Punch [P] to pause the game\n" << endl;
+	cout << "Eat $ to make the snake longer" << endl;
+	cout << "Go to the portal " << (char)219 << " to level up\n" << endl;
+
+	// Choose snake style
+	cout << "Choose your snake style:" << endl;
+	cout << "[1] " << (char)153 << (char)233 << "O" << (char)233 << "O" << (char)233 << "O" << endl;
+	cout << "[2] 1616008" << endl;
+	cout << "[3] Random!" << endl; // confirm by randomStyle in main()
+	do {
+		keypress = getch();
+		switch (keypress) {
+		case '1': snakeStyle = 1; break;
+		case '2': snakeStyle = 2; break;
+		case '3': snakeStyle = 3; break;
+		}
+	} while (snakeStyle != 1 && snakeStyle != 2 && snakeStyle != 3);
+
+	// [Enter] to start
+	cout << "Punch [Enter] to start...";
+	do {
+		keypress = getch();
+	} while (keypress != '\r');
+}
+
+// Game Over Screen
+void gameOverScr() {
+	char endStr[] = "Too bad! Game Over";
+
+	// Calculate the length of "endStr"
+	short endStrLength = 0;
+	while (endStr[endStrLength] != 0) endStrLength++;
+
+	// Print the endStr in the middle of the map
+	system("cls");
+	for (short i = 0; i < endStrLength; i++) {
+		map[(mapwidth / 2 - endStrLength / 2 + i) + (mapheight / 2)*mapwidth] = endStr[i];
+	}
+	printMap();
+
+	// Press [Enter] to continue
+	cout << "Punch [Enter] to continue...";
+	do {
+		keypress = getch();
+	} while (keypress != '\r');
+	system("cls");
+}
